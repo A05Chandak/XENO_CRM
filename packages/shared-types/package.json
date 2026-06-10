@@ -1,0 +1,12 @@
+{
+  "name": "@xeno/shared-types",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "node -e \"process.exit(0)\"",
+    "lint": "node -e \"process.exit(0)\""
+  }
+}

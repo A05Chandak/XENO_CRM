@@ -1,0 +1,18 @@
+{
+  "name": "xeno-mini-crm",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace @xeno/backend",
+    "dev:channel": "npm run dev --workspace @xeno/channel-service",
+    "dev:frontend": "npm run dev --workspace @xeno/frontend",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "db:setup": "npm run db:push --workspace @xeno/backend && npm run db:seed --workspace @xeno/backend",
+    "db:seed": "npm run db:seed --workspace @xeno/backend"
+  }
+}

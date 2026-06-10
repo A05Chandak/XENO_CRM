@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Channel {
+  whatsapp
+  sms
+  email
+  rcs
+}
+
+enum MessageStatus {
+  queued
+  sent
+  delivered
+  opened
+  clicked
+  failed
+}
+
+enum SegmentType {
+  manual
+  ai
+}
+
+enum EngagementStatus {
+  cold
+  warm
+  hot
+  dormant
+}
+
+model Customer {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  phone             String
+  city              String
+  state             String
+  totalSpent        Decimal   @default(0)
+  orderCount        Int       @default(0)
+  lastOrderedAt     DateTime?
+  engagementStatus  EngagementStatus @default(cold)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  orders            Order[]
+  messages          Message[]
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  customerId  String
+  orderNumber String   @unique
+  amount      Decimal
+  currency    String   @default("INR")
+  status      String
+  orderedAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model Segment {
+  id            String       @id @default(cuid())
+  name          String
+  type          SegmentType
+  definition    Json
+  explanation   Json
+  sourcePrompt  String?
+  matchCount    Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  campaigns     Campaign[]
+}
+
+model Campaign {
+  id              String    @id @default(cuid())
+  name            String
+  goal            String
+  segmentId       String
+  channel         Channel
+  messageTemplate String
+  generatedCopy   String?
+  suggestedCta    String?
+  status          String    @default("draft")
+  messageCount    Int       @default(0)
+  sentCount       Int       @default(0)
+  deliveredCount  Int       @default(0)
+  openedCount     Int       @default(0)
+  clickedCount    Int       @default(0)
+  failedCount     Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  segment         Segment   @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  messages        Message[]
+}
+
+model Message {
+  id              String        @id @default(cuid())
+  campaignId      String
+  customerId      String
+  channel         Channel
+  recipient       String
+  content         String
+  status          MessageStatus @default(queued)
+  statusEvents    Json
+  attempts       Int           @default(0)
+  providerJobId  String?
+  lastError      String?
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  openedAt       DateTime?
+  clickedAt      DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}

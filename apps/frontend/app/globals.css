@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ink-950 text-slate-100 antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(249, 115, 22, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 24%),
+    linear-gradient(180deg, #06111f 0%, #0b172a 46%, #08101b 100%);
+}
+
+.grid-glass {
+  background: rgba(8, 16, 27, 0.74);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.noise {
+  position: relative;
+}
+
+.noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(circle at center, black, transparent 92%);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading), var(--font-body);
+}
+
+@layer components {
+  .panel {
+    @apply grid-glass rounded-3xl shadow-glow;
+  }
+
+  .panel-title {
+    @apply text-xs uppercase tracking-[0.35em] text-slate-400;
+  }
+
+  .metric-value {
+    @apply text-3xl font-semibold text-white;
+  }
+
+  .metric-label {
+    @apply text-sm text-slate-400;
+  }
+}
