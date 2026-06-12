@@ -10,9 +10,15 @@
     "dev:backend": "npm run dev --workspace @xeno/backend",
     "dev:channel": "npm run dev --workspace @xeno/channel-service",
     "dev:frontend": "npm run dev --workspace @xeno/frontend",
+    "build:backend": "npm run build --workspace @xeno/backend",
+    "build:channel": "npm run build --workspace @xeno/channel-service",
+    "build:frontend": "npm run build --workspace @xeno/frontend",
+    "start:backend": "npm run start --workspace @xeno/backend",
+    "start:channel": "npm run start --workspace @xeno/channel-service",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "db:setup": "npm run db:push --workspace @xeno/backend && npm run db:seed --workspace @xeno/backend",
+    "db:deploy": "npm run db:push --workspace @xeno/backend",
     "db:seed": "npm run db:seed --workspace @xeno/backend"
   }
 }

@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: xeno-mini-crm-backend
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build:backend
+    preDeployCommand: npm run db:deploy
+    startCommand: npm run start:backend
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: CRM_WEBHOOK_SECRET
+        generateValue: true
+      - key: CHANNEL_SERVICE_URL
+        value: https://xeno-mini-crm-channel.onrender.com
+      - key: API_BASE_URL
+        value: https://xeno-mini-crm-backend.onrender.com
+
+  - type: web
+    name: xeno-mini-crm-channel
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build:channel
+    startCommand: npm run start:channel
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20

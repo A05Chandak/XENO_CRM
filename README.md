@@ -74,6 +74,108 @@ If `OPENAI_API_KEY` is not set, the backend falls back to deterministic heuristi
    npm run dev:frontend
    ```
 
+## Deployment
+
+Recommended path for the demo:
+
+- Frontend: Vercel
+- Backend: Render web service
+- Channel service: Render web service
+- PostgreSQL: Neon, Supabase, Railway Postgres, or Render Postgres
+
+### 1. Push the repo to GitHub
+
+Both Vercel and Render deploy cleanly from GitHub. Make sure `.env` files are not committed.
+
+### 2. Create a hosted PostgreSQL database
+
+Create a Postgres database and copy the pooled or direct connection string. Use it as `DATABASE_URL` for the backend.
+
+### 3. Deploy Backend and Channel Service on Render
+
+This repo includes `render.yaml`, so the fastest route is Render Blueprint:
+
+1. In Render, create a new Blueprint from this GitHub repo.
+2. Render creates:
+   - `xeno-mini-crm-backend`
+   - `xeno-mini-crm-channel`
+3. Add backend secrets when prompted:
+   - `DATABASE_URL`
+   - `OPENAI_API_KEY`
+4. After the services are created, confirm these backend env vars match the actual Render URLs:
+   - `API_BASE_URL=https://xeno-mini-crm-backend.onrender.com`
+   - `CHANNEL_SERVICE_URL=https://xeno-mini-crm-channel.onrender.com`
+5. If Render changes either subdomain, update the env vars and redeploy the backend.
+
+Render commands used by the blueprint:
+
+```bash
+npm ci && npm run build:backend
+npm run db:deploy
+npm run start:backend
+```
+
+```bash
+npm ci && npm run build:channel
+npm run start:channel
+```
+
+### 4. Seed Production Demo Data
+
+After the backend deploy succeeds, run a one-off job or shell command on the backend service:
+
+```bash
+npm run db:seed
+```
+
+Use this once for the demo database. Re-running it resets demo customers, orders, segments, campaigns, and messages.
+
+### 5. Deploy Frontend on Vercel
+
+Import the same GitHub repo into Vercel as a monorepo project:
+
+- Framework preset: `Next.js`
+- Root directory: `apps/frontend`
+- Build command: `npm run build`
+- Install command: auto-detected
+- Output directory: auto-detected
+
+Set this Vercel environment variable:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://xeno-mini-crm-backend.onrender.com
+```
+
+Replace the URL if Render generated a different backend domain.
+
+### 6. Smoke Test Production
+
+Open these URLs:
+
+```bash
+https://xeno-mini-crm-backend.onrender.com/health
+https://xeno-mini-crm-channel.onrender.com/health
+```
+
+Then test the product flow from the Vercel URL:
+
+1. Open Customers and verify seeded shoppers load.
+2. Create an AI segment.
+3. Create a campaign from that segment.
+4. Launch the campaign.
+5. Wait a few seconds, then open Analytics and confirm message stats update.
+
+### Railway Alternative
+
+Railway can also deploy this as a shared npm workspace monorepo. Create two services from the same repo and keep the repo root as the build context:
+
+- Backend build command: `npm ci && npm run build:backend`
+- Backend start command: `npm run start:backend`
+- Channel build command: `npm ci && npm run build:channel`
+- Channel start command: `npm run start:channel`
+
+Set the same backend env vars listed above. Run `npm run db:deploy` and `npm run db:seed` from the backend service after the database is attached.
+
 ## Environment Variables
 
 ### Backend
@@ -107,7 +209,7 @@ If `OPENAI_API_KEY` is not set, the backend falls back to deterministic heuristi
 ## Deployment URLs
 
 - Frontend: `https://your-vercel-app.vercel.app`
-- Backend: `https://your-render-or-railway-api.onrender.com`
-- Channel service: `https://your-render-or-railway-channel.onrender.com`
+- Backend: `https://xeno-mini-crm-backend.onrender.com`
+- Channel service: `https://xeno-mini-crm-channel.onrender.com`
 
 Replace these placeholders with your actual deployment URLs and update the environment variables accordingly.
