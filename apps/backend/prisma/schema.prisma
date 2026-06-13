@@ -19,6 +19,7 @@ enum MessageStatus {
   sent
   delivered
   opened
+  read
   clicked
   failed
 }
@@ -53,16 +54,22 @@ model Customer {
 }
 
 model Order {
-  id          String   @id @default(cuid())
-  customerId  String
-  orderNumber String   @unique
-  amount      Decimal
-  currency    String   @default("INR")
-  status      String
-  orderedAt   DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id                   String    @id @default(cuid())
+  customerId           String
+  orderNumber          String    @unique
+  amount               Decimal
+  totalAmount          Decimal?
+  currency             String    @default("INR")
+  status               String
+  orderedAt            DateTime
+  attributedCampaignId String?
+  attributedMessageId  String?
+  attributedAt         DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  customer             Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  attributedCampaign   Campaign? @relation(fields: [attributedCampaignId], references: [id], onDelete: SetNull)
+  attributedMessage    Message?  @relation(fields: [attributedMessageId], references: [id], onDelete: SetNull)
 }
 
 model Segment {
@@ -94,10 +101,12 @@ model Campaign {
   openedCount     Int       @default(0)
   clickedCount    Int       @default(0)
   failedCount     Int       @default(0)
+  attributedRevenue Decimal @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   segment         Segment   @relation(fields: [segmentId], references: [id], onDelete: Restrict)
   messages        Message[]
+  attributedOrders Order[]
 }
 
 model Message {
@@ -115,10 +124,12 @@ model Message {
   sentAt         DateTime?
   deliveredAt    DateTime?
   openedAt       DateTime?
+  readAt         DateTime?
   clickedAt      DateTime?
   failedAt       DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  attributedOrders Order[]
 }

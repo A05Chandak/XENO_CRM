@@ -1,163 +1,213 @@
+import crypto from "node:crypto";
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
-import type { MessageStatus } from "@xeno/shared-types";
+import type {
+  Channel,
+  ChannelReceiptPayload,
+  ChannelReceiptStatus,
+  ChannelSendMessage,
+  ChannelSendRequest,
+  ChannelSendResponse
+} from "@xeno/shared-types";
 
-type JobEvent = {
-  status: MessageStatus;
-  at: string;
-  meta?: Record<string, unknown>;
-};
-
-type Job = {
-  id: string;
-  messageId: string;
+type QueuedMessage = ChannelSendMessage & {
+  trackingId: string;
   receiptUrl: string;
-  receiptSecret: string;
-  channel: string;
-  recipient: string;
-  content: string;
-  events: JobEvent[];
+  events: ChannelReceiptPayload[];
   attempts: number;
   createdAt: string;
+  processing: boolean;
 };
 
 const port = Number(process.env.PORT ?? "4100");
-const jobs = new Map<string, Job>();
+const jobs = new Map<string, QueuedMessage>();
+const queue: QueuedMessage[] = [];
 
-function randomId() {
-  return `job_${Math.random().toString(36).slice(2, 10)}`;
+function webhookSecret() {
+  return process.env.CRM_WEBHOOK_SECRET ?? "dev-secret";
 }
 
-function randomDelay(min = 400, max = 1600) {
+function randomId() {
+  return `trk_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
+
+function randomDelay(min = 5000, max = 20000) {
   return Math.floor(min + Math.random() * (max - min));
 }
 
-function randomStatus(): Exclude<MessageStatus, "queued"> {
-  const roll = Math.random();
-  if (roll < 0.12) return "failed";
-  if (roll < 0.48) return "sent";
-  if (roll < 0.72) return "delivered";
-  if (roll < 0.9) return "opened";
-  return "clicked";
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postReceipt(job: Job, event: JobEvent, retry = 0): Promise<void> {
+function chooseTerminalStatus(): ChannelReceiptStatus {
+  const roll = Math.random();
+  if (roll < 0.14) return "FAILED";
+  if (roll < 0.76) return "DELIVERED";
+  return "READ";
+}
+
+function signPayload(serializedPayload: string) {
+  return crypto.createHmac("sha256", webhookSecret()).update(serializedPayload).digest("hex");
+}
+
+async function postReceipt(job: QueuedMessage, payload: ChannelReceiptPayload, retry = 0): Promise<void> {
+  const body = JSON.stringify(payload);
   const response = await fetch(job.receiptUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-receipt-secret": job.receiptSecret
+      "X-Xeno-Signature": `sha256=${signPayload(body)}`
     },
-    body: JSON.stringify({
-      messageId: job.messageId,
-      status: event.status,
-      at: event.at,
-      meta: event.meta,
-      receiptSecret: job.receiptSecret
-    })
+    body
   });
 
   if (!response.ok) {
     if (retry < 3) {
-      await new Promise((resolve) => setTimeout(resolve, 300 * (retry + 1)));
-      return postReceipt(job, event, retry + 1);
+      await delay(400 * (retry + 1));
+      return postReceipt(job, payload, retry + 1);
     }
     throw new Error(`Receipt rejected with ${response.status}`);
   }
 }
 
-function enqueueProcessing(job: Job) {
-  const pushEvent = async (status: MessageStatus, meta?: Record<string, unknown>) => {
-    const event: JobEvent = { status, at: new Date().toISOString(), ...(meta ? { meta } : {}) };
-    job.events.push(event);
-    job.attempts += 1;
-    await postReceipt(job, event);
+async function emitStatus(job: QueuedMessage, status: ChannelReceiptStatus, meta?: Record<string, unknown>) {
+  const payload: ChannelReceiptPayload = {
+    messageId: job.messageId,
+    trackingId: job.trackingId,
+    status,
+    at: new Date().toISOString(),
+    ...(meta ? { meta } : {})
   };
 
-  const run = async () => {
-    await new Promise((resolve) => setTimeout(resolve, randomDelay(300, 1000)));
-    await pushEvent("sent");
+  job.events.push(payload);
+  job.attempts += 1;
+  await postReceipt(job, payload);
+}
 
-    const terminal = randomStatus();
-    await new Promise((resolve) => setTimeout(resolve, randomDelay(500, 2000)));
+async function processJob(job: QueuedMessage) {
+  if (job.processing) {
+    return;
+  }
 
-    if (terminal === "failed") {
-      await pushEvent("failed", { reason: "Simulated carrier timeout" });
+  job.processing = true;
+  const deliveryWindow = randomDelay();
+  const terminalStatus = chooseTerminalStatus();
+
+  try {
+    if (terminalStatus === "FAILED") {
+      await delay(deliveryWindow);
+      await emitStatus(job, "FAILED", { reason: "Simulated carrier failure", channel: job.channel });
       return;
     }
 
-    if (terminal === "sent") {
-      await pushEvent("delivered");
-      return;
+    await delay(Math.floor(deliveryWindow * 0.62));
+    await emitStatus(job, "DELIVERED", { channel: job.channel });
+
+    if (terminalStatus === "READ") {
+      await delay(Math.max(250, Math.floor(deliveryWindow * 0.38)));
+      await emitStatus(job, "READ", { channel: job.channel });
     }
+  } catch (error) {
+    await emitStatus(job, "FAILED", {
+      reason: error instanceof Error ? error.message : "Unknown delivery worker error",
+      channel: job.channel
+    }).catch(() => undefined);
+  }
+}
 
-    if (terminal === "delivered") {
-      await pushEvent("delivered");
-      return;
-    }
-
-    if (terminal === "opened") {
-      await pushEvent("delivered");
-      await new Promise((resolve) => setTimeout(resolve, randomDelay(500, 1200)));
-      await pushEvent("opened");
-      return;
-    }
-
-    await pushEvent("delivered");
-    await new Promise((resolve) => setTimeout(resolve, randomDelay(300, 900)));
-    await pushEvent("opened");
-    await new Promise((resolve) => setTimeout(resolve, randomDelay(200, 700)));
-    await pushEvent("clicked");
-  };
-
-  run().catch((error) => {
-    console.error("Channel processing failed", error);
-    pushEvent("failed", { reason: error instanceof Error ? error.message : "Unknown channel error" }).catch(() => undefined);
-  });
+function drainQueue() {
+  let nextJob = queue.shift();
+  while (nextJob) {
+    void processJob(nextJob);
+    nextJob = queue.shift();
+  }
 }
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "channel-service" });
+const messageSchema = z.object({
+  messageId: z.string().min(1),
+  campaignId: z.string().min(1),
+  customerId: z.string().min(1),
+  channel: z.enum(["whatsapp", "sms", "email", "rcs"]),
+  recipient: z.string().min(1),
+  content: z.string().min(1)
 });
 
-app.post("/send", async (req, res) => {
-  const schema = z.object({
-    messageId: z.string(),
+const sendSchema = z.object({
+  receiptUrl: z.string().url(),
+  messages: z.array(messageSchema).min(1)
+});
+
+function enqueueMessages(body: ChannelSendRequest) {
+  const trackingIds = body.messages.map((message) => {
+    const trackingId = randomId();
+    const job: QueuedMessage = {
+      ...message,
+      trackingId,
+      receiptUrl: body.receiptUrl,
+      events: [],
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+      processing: false
+    };
+
+    jobs.set(trackingId, job);
+    queue.push(job);
+
+    return {
+      messageId: message.messageId,
+      trackingId
+    };
+  });
+
+  queueMicrotask(drainQueue);
+
+  return {
+    accepted: trackingIds.length,
+    trackingIds
+  } satisfies ChannelSendResponse;
+}
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "channel-service", queued: queue.length, jobs: jobs.size });
+});
+
+app.post("/messages/send", (req, res) => {
+  const body = sendSchema.parse(req.body) satisfies ChannelSendRequest;
+  res.status(202).json(enqueueMessages(body));
+});
+
+app.post("/send", (req, res) => {
+  const legacySchema = z.object({
+    messageId: z.string().min(1),
+    campaignId: z.string().optional(),
+    customerId: z.string().optional(),
     receiptUrl: z.string().url(),
-    receiptSecret: z.string().min(1),
-    channel: z.string().min(1),
+    channel: z.enum(["whatsapp", "sms", "email", "rcs"]),
     recipient: z.string().min(1),
     content: z.string().min(1)
   });
 
-  const body = schema.parse(req.body);
-  const job: Job = {
-    id: randomId(),
-    messageId: body.messageId,
+  const body = legacySchema.parse(req.body);
+  const payload: ChannelSendRequest = {
     receiptUrl: body.receiptUrl,
-    receiptSecret: body.receiptSecret,
-    channel: body.channel,
-    recipient: body.recipient,
-    content: body.content,
-    events: [],
-    attempts: 0,
-    createdAt: new Date().toISOString()
+    messages: [
+      {
+        messageId: body.messageId,
+        campaignId: body.campaignId ?? "legacy-campaign",
+        customerId: body.customerId ?? "legacy-customer",
+        channel: body.channel,
+        recipient: body.recipient,
+        content: body.content
+      }
+    ]
   };
 
-  jobs.set(job.id, job);
-  enqueueProcessing(job);
-
-  res.status(202).json({
-    ok: true,
-    jobId: job.id,
-    messageId: job.messageId,
-    status: "queued"
-  });
+  res.status(202).json(enqueueMessages(payload));
 });
 
 app.get("/jobs/:id", (req, res) => {

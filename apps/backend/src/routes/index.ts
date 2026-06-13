@@ -3,10 +3,12 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { serialize } from "../lib/serialize.js";
 import { createAISegment, createCampaign, createManualSegment, launchCampaign, applyReceipt } from "../services/campaign.js";
+import { ingestOrder } from "../services/orders.js";
 import { buildAnalytics } from "../services/analytics.js";
 import { filterToWhere } from "../services/filter.js";
 import { generateCampaignCopy, parseSegmentText, recommendChannel } from "../ai/service.js";
-import type { Channel, SegmentFilter } from "@xeno/shared-types";
+import { verifyWebhookSignature } from "../middleware/webhookSignature.js";
+import type { Channel, MessageStatus, OrderIngestionPayload, SegmentFilter } from "@xeno/shared-types";
 
 const router = Router();
 
@@ -47,9 +49,31 @@ router.get("/customers/:id", async (req, res) => {
 router.get("/orders", async (_req, res) => {
   const orders = await prisma.order.findMany({
     orderBy: { orderedAt: "desc" },
-    include: { customer: true }
+    include: { customer: true, attributedCampaign: true }
   });
   res.json(serialize(orders));
+});
+
+router.post("/orders", async (req, res) => {
+  const schema = z.object({
+    customerId: z.string().min(1),
+    orderNumber: z.string().min(1),
+    totalAmount: z.number().positive(),
+    currency: z.string().min(3).optional(),
+    status: z.string().min(1).optional(),
+    orderedAt: z.string().datetime().optional()
+  });
+  const body = schema.parse(req.body);
+  const payload: OrderIngestionPayload = {
+    customerId: body.customerId,
+    orderNumber: body.orderNumber,
+    totalAmount: body.totalAmount,
+    ...(body.currency ? { currency: body.currency } : {}),
+    ...(body.status ? { status: body.status } : {}),
+    ...(body.orderedAt ? { orderedAt: body.orderedAt } : {})
+  };
+  const result = await ingestOrder(payload);
+  res.status(201).json(serialize(result));
 });
 
 router.get("/segments", async (_req, res) => {
@@ -149,26 +173,36 @@ router.get("/messages", async (_req, res) => {
   res.json(serialize(messages));
 });
 
-router.post("/webhooks/channel-receipt", async (req, res) => {
+router.post("/webhooks/channel-receipt", verifyWebhookSignature, async (req, res) => {
   const schema = z.object({
     messageId: z.string(),
-    status: z.enum(["queued", "sent", "delivered", "opened", "clicked", "failed"]),
+    trackingId: z.string().min(1),
+    status: z.enum(["DELIVERED", "READ", "FAILED", "sent", "delivered", "opened", "read", "clicked", "failed"]),
     at: z.string(),
-    meta: z.record(z.unknown()).optional(),
-    receiptSecret: z.string().optional()
+    meta: z.record(z.unknown()).optional()
   });
   const body = schema.parse(req.body);
-  const secret = req.header("x-receipt-secret") ?? body.receiptSecret;
-  if (secret !== (process.env.CRM_WEBHOOK_SECRET ?? "dev-secret")) {
-    return res.status(401).json({ error: "Invalid webhook secret" });
-  }
-  await applyReceipt({
+
+  const normalizedStatus = {
+    DELIVERED: "delivered",
+    READ: "read",
+    FAILED: "failed",
+    sent: "sent",
+    delivered: "delivered",
+    opened: "opened",
+    read: "read",
+    clicked: "clicked",
+    failed: "failed"
+  }[body.status] as MessageStatus;
+
+  const result = await applyReceipt({
     messageId: body.messageId,
-    status: body.status,
+    status: normalizedStatus,
     at: body.at,
+    trackingId: body.trackingId,
     ...(body.meta ? { meta: body.meta } : {})
   });
-  res.json({ ok: true });
+  res.json(result);
 });
 
 router.get("/analytics/dashboard", async (_req, res) => {

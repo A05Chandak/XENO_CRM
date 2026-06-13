@@ -1,13 +1,13 @@
-import { api } from "../../lib/api";
+import { api, formatCurrency } from "../../lib/api";
 import { MetricCard } from "../../components/metrics";
 import { DashboardCharts } from "../../components/dashboard-charts";
 
 export default async function DashboardPage() {
   const [analytics, campaigns] = await Promise.all([api.analytics(), api.campaigns()]);
   const totals = {
-    sent: analytics.byStatus.sent + analytics.byStatus.delivered + analytics.byStatus.opened + analytics.byStatus.clicked,
-    delivered: analytics.byStatus.delivered + analytics.byStatus.opened + analytics.byStatus.clicked,
-    opened: analytics.byStatus.opened + analytics.byStatus.clicked,
+    sent: analytics.byStatus.sent + analytics.byStatus.delivered + analytics.byStatus.opened + analytics.byStatus.read + analytics.byStatus.clicked,
+    delivered: analytics.byStatus.delivered + analytics.byStatus.opened + analytics.byStatus.read + analytics.byStatus.clicked,
+    opened: analytics.byStatus.opened + analytics.byStatus.read + analytics.byStatus.clicked,
     clicked: analytics.byStatus.clicked,
     failed: analytics.byStatus.failed
   };
@@ -29,12 +29,13 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Sent" value={String(totals.sent)} note="Queued to the channel simulator" />
         <MetricCard label="Delivered" value={String(totals.delivered)} note="Receipts confirmed by webhook" />
         <MetricCard label="Opened" value={String(totals.opened)} note="Seen in the recipient inbox" />
         <MetricCard label="Clicked" value={String(totals.clicked)} note="CTA engagement captured" accent="text-ember-400" />
         <MetricCard label="Failed" value={String(totals.failed)} note="Simulated delivery failures" accent="text-red-300" />
+        <MetricCard label="ROI" value={formatCurrency(analytics.attributedRevenue)} note="Orders attributed within 24h" accent="text-emerald-300" />
       </section>
 
       <DashboardCharts analytics={analytics} />

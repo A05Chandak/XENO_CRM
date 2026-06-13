@@ -13,7 +13,7 @@ html {
 body {
   @apply bg-ink-950 text-slate-100 antialiased;
   background-image:
-    radial-gradient(circle at top left, rgba(249, 115, 22, 0.16), transparent 26%),
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.15), transparent 26%),
     radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 24%),
     linear-gradient(180deg, #06111f 0%, #0b172a 46%, #08101b 100%);
 }

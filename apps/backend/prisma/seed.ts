@@ -68,6 +68,7 @@ async function main() {
           customerId: customer.id,
           orderNumber: `XENO-${index + 1}-${orderIndex + 1}`,
           amount: money(800 + orderIndex * 420 + (index % 5) * 115),
+          totalAmount: money(800 + orderIndex * 420 + (index % 5) * 115),
           status: orderIndex === orderCount - 1 ? "delivered" : "fulfilled",
           orderedAt: addDays(now, -((index * 7) + orderIndex * 11))
         }
@@ -116,6 +117,8 @@ async function main() {
     }
   });
 
+  let attributedRevenue = 0;
+
   for (let index = 0; index < matchedCustomers.length; index += 1) {
     const customer = matchedCustomers[index];
     const status = index % 7 === 0 ? "failed" : index % 5 === 0 ? "clicked" : index % 3 === 0 ? "opened" : "delivered";
@@ -125,7 +128,7 @@ async function main() {
       { status, at: addDays(now, -4 + index).toISOString() }
     ];
 
-    await prisma.message.create({
+    const message = await prisma.message.create({
       data: {
         campaignId: campaign.id,
         customerId: customer.id,
@@ -137,15 +140,39 @@ async function main() {
         sentAt: addDays(now, -5 + index),
         deliveredAt: status === "delivered" || status === "opened" || status === "clicked" ? addDays(now, -4 + index) : null,
         openedAt: status === "opened" || status === "clicked" ? addDays(now, -3 + index) : null,
+        readAt: status === "opened" || status === "clicked" ? addDays(now, -3 + index) : null,
         clickedAt: status === "clicked" ? addDays(now, -2 + index) : null,
         failedAt: status === "failed" ? addDays(now, -4 + index) : null
       }
     });
+
+    if (status === "opened" || status === "clicked") {
+      const totalAmount = money(1200 + index * 135);
+      attributedRevenue += totalAmount;
+      await prisma.order.create({
+        data: {
+          customerId: customer.id,
+          orderNumber: `ATTR-${index + 1}`,
+          amount: totalAmount,
+          totalAmount,
+          status: "paid",
+          orderedAt: addDays(now, -2 + index),
+          attributedCampaignId: campaign.id,
+          attributedMessageId: message.id,
+          attributedAt: addDays(now, -2 + index)
+        }
+      });
+    }
   }
 
   await prisma.segment.update({
     where: { id: segment.id },
     data: { matchCount: matchedCustomers.length }
+  });
+
+  await prisma.campaign.update({
+    where: { id: campaign.id },
+    data: { attributedRevenue }
   });
 
   console.log(`Seeded ${customers.length} customers and ${matchedCustomers.length} campaign messages.`);

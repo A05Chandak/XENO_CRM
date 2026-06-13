@@ -3,7 +3,7 @@
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AnalyticsSummary } from "@xeno/shared-types";
 
-const statusColors = ["#f97316", "#4ade80", "#38bdf8", "#facc15", "#ef4444", "#94a3b8"];
+const statusColors = ["#22d3ee", "#4ade80", "#38bdf8", "#a78bfa", "#ef4444", "#94a3b8"];
 
 export function DashboardCharts({ analytics }: { analytics: AnalyticsSummary }) {
   return (
@@ -17,7 +17,7 @@ export function DashboardCharts({ analytics }: { analytics: AnalyticsSummary }) 
               <XAxis dataKey="label" stroke="#94a3b8" />
               <YAxis stroke="#94a3b8" />
               <Tooltip contentStyle={{ background: "#08101b", border: "1px solid rgba(255,255,255,0.08)" }} />
-              <Bar dataKey="value" radius={[12, 12, 0, 0]} fill="#f97316" />
+              <Bar dataKey="value" radius={[12, 12, 0, 0]} fill="#22d3ee" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -44,15 +44,15 @@ export function DashboardCharts({ analytics }: { analytics: AnalyticsSummary }) 
             <AreaChart data={analytics.timeSeries}>
               <defs>
                 <linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.5} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.5} />
+                  <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
               <XAxis dataKey="date" stroke="#94a3b8" />
               <YAxis stroke="#94a3b8" />
               <Tooltip contentStyle={{ background: "#08101b", border: "1px solid rgba(255,255,255,0.08)" }} />
-              <Area type="monotone" dataKey="sent" stroke="#f97316" fill="url(#sentFill)" />
+              <Area type="monotone" dataKey="sent" stroke="#22d3ee" fill="url(#sentFill)" />
               <Line type="monotone" dataKey="delivered" stroke="#4ade80" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="opened" stroke="#38bdf8" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="clicked" stroke="#facc15" strokeWidth={2} dot={false} />

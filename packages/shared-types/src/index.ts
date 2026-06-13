@@ -1,6 +1,6 @@
 export type Channel = "whatsapp" | "sms" | "email" | "rcs";
 
-export type MessageStatus = "queued" | "sent" | "delivered" | "opened" | "clicked" | "failed";
+export type MessageStatus = "queued" | "sent" | "delivered" | "opened" | "read" | "clicked" | "failed";
 
 export type SegmentType = "manual" | "ai";
 
@@ -57,10 +57,52 @@ export type CampaignMessagePayload = {
   }>;
 };
 
+export type ChannelSendMessage = {
+  messageId: string;
+  campaignId: string;
+  customerId: string;
+  channel: Channel;
+  recipient: string;
+  content: string;
+};
+
+export type ChannelSendRequest = {
+  messages: ChannelSendMessage[];
+  receiptUrl: string;
+};
+
+export type ChannelSendResponse = {
+  accepted: number;
+  trackingIds: Array<{
+    messageId: string;
+    trackingId: string;
+  }>;
+};
+
+export type ChannelReceiptStatus = "DELIVERED" | "READ" | "FAILED";
+
+export type ChannelReceiptPayload = {
+  messageId: string;
+  trackingId: string;
+  status: ChannelReceiptStatus;
+  at: string;
+  meta?: Record<string, unknown>;
+};
+
+export type OrderIngestionPayload = {
+  customerId: string;
+  orderNumber: string;
+  totalAmount: number;
+  currency?: string;
+  status?: string;
+  orderedAt?: string;
+};
+
 export type AnalyticsSummary = {
   total: number;
   byStatus: Record<MessageStatus, number>;
   byChannel: Record<Channel, number>;
   funnel: Array<{ label: string; value: number }>;
   timeSeries: Array<{ date: string; sent: number; delivered: number; opened: number; clicked: number; failed: number }>;
+  attributedRevenue: number;
 };

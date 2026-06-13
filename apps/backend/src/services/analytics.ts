@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-const statuses = ["queued", "sent", "delivered", "opened", "clicked", "failed"] as const;
+const statuses = ["queued", "sent", "delivered", "opened", "read", "clicked", "failed"] as const;
 const channels = ["whatsapp", "sms", "email", "rcs"] as const;
 
 export async function buildAnalytics() {
@@ -13,6 +13,7 @@ export async function buildAnalytics() {
       sentAt: true,
       deliveredAt: true,
       openedAt: true,
+      readAt: true,
       clickedAt: true,
       failedAt: true
     },
@@ -30,7 +31,7 @@ export async function buildAnalytics() {
   const funnel = [
     { label: "Sent", value: byStatus.sent + byStatus.delivered + byStatus.opened + byStatus.clicked },
     { label: "Delivered", value: byStatus.delivered + byStatus.opened + byStatus.clicked },
-    { label: "Opened", value: byStatus.opened + byStatus.clicked },
+    { label: "Read", value: byStatus.opened + byStatus.read + byStatus.clicked },
     { label: "Clicked", value: byStatus.clicked }
   ];
 
@@ -54,13 +55,13 @@ export async function buildAnalytics() {
           failed: 0
         };
 
-      if (event.status === "sent" || event.status === "delivered" || event.status === "opened" || event.status === "clicked") {
+      if (event.status === "sent" || event.status === "delivered" || event.status === "opened" || event.status === "read" || event.status === "clicked") {
         entry.sent += 1;
       }
-      if (event.status === "delivered" || event.status === "opened" || event.status === "clicked") {
+      if (event.status === "delivered" || event.status === "opened" || event.status === "read" || event.status === "clicked") {
         entry.delivered += 1;
       }
-      if (event.status === "opened" || event.status === "clicked") {
+      if (event.status === "opened" || event.status === "read" || event.status === "clicked") {
         entry.opened += 1;
       }
       if (event.status === "clicked") {
@@ -74,11 +75,18 @@ export async function buildAnalytics() {
     }
   }
 
+  const revenue = await prisma.campaign.aggregate({
+    _sum: {
+      attributedRevenue: true
+    }
+  });
+
   return {
     total: messages.length,
     byStatus,
     byChannel,
     funnel,
-    timeSeries: [...days.values()].sort((left, right) => left.date.localeCompare(right.date))
+    timeSeries: [...days.values()].sort((left, right) => left.date.localeCompare(right.date)),
+    attributedRevenue: revenue._sum.attributedRevenue?.toNumber() ?? 0
   };
 }

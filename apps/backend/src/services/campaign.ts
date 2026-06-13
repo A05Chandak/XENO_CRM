@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import type { Channel, MessageStatus } from "@xeno/shared-types";
+import type { Channel, ChannelSendRequest, ChannelSendResponse, MessageStatus } from "@xeno/shared-types";
 import { prisma } from "../lib/prisma.js";
 import { filterToWhere, summarizeFilter } from "./filter.js";
 import type { SegmentFilter } from "@xeno/shared-types";
@@ -12,7 +12,7 @@ function createStatusEvents(status: MessageStatus, meta?: Record<string, unknown
   return [{ status, at: new Date().toISOString(), ...(meta ? { meta } : {}) }] as unknown as Prisma.InputJsonValue;
 }
 
-async function postWithRetry(url: string, body: unknown, retries = 3) {
+async function postWithRetry<T>(url: string, body: unknown, retries = 3): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
@@ -26,7 +26,7 @@ async function postWithRetry(url: string, body: unknown, retries = 3) {
       if (!response.ok) {
         throw new Error(`Request failed with ${response.status}`);
       }
-      return await response.json();
+      return (await response.json()) as T;
     } catch (error) {
       lastError = error;
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
@@ -136,75 +136,119 @@ export async function launchCampaign(campaignId: string) {
     }
   });
 
-  const deliveries = await Promise.allSettled(
-    messages.map((message) =>
-      postWithRetry(`${channelServiceUrl()}/send`, {
-        messageId: message.id,
-        channel: message.channel,
-        recipient: message.recipient,
-        content: message.content,
-        receiptUrl: `${apiBaseUrl()}/webhooks/channel-receipt`,
-        receiptSecret: crmWebhookSecret()
-      })
-    )
-  );
+  const payload: ChannelSendRequest = {
+    receiptUrl: `${apiBaseUrl()}/webhooks/channel-receipt`,
+    messages: messages.map((message) => ({
+      messageId: message.id,
+      campaignId: message.campaignId,
+      customerId: message.customerId,
+      channel: message.channel,
+      recipient: message.recipient,
+      content: message.content
+    }))
+  };
+
+  const delivery = await postWithRetry<ChannelSendResponse>(`${channelServiceUrl()}/messages/send`, payload);
 
   return {
     campaignId,
     launched: messages.length,
     audienceSize: customers.length,
-    failedDispatches: deliveries.filter((entry) => entry.status === "rejected").length
+    trackingIds: delivery.trackingIds
   };
+}
+
+function isDuplicateTransition(current: MessageStatus, incoming: MessageStatus) {
+  const deliveredOrBeyond: MessageStatus[] = ["delivered", "opened", "read", "clicked"];
+  const readOrBeyond: MessageStatus[] = ["opened", "read", "clicked"];
+
+  if (incoming === "sent") {
+    return current !== "queued";
+  }
+  if (incoming === "delivered") {
+    return deliveredOrBeyond.includes(current);
+  }
+  if (incoming === "opened" || incoming === "read") {
+    return readOrBeyond.includes(current);
+  }
+  if (incoming === "clicked") {
+    return current === "clicked";
+  }
+  if (incoming === "failed") {
+    return current === "failed" || deliveredOrBeyond.includes(current) || current === "clicked";
+  }
+
+  return false;
 }
 
 export async function applyReceipt(input: {
   messageId: string;
   status: MessageStatus;
   at: string;
+  trackingId?: string;
   meta?: Record<string, unknown>;
 }) {
-  const existing = await prisma.message.findUnique({ where: { id: input.messageId } });
-  if (!existing) {
-    throw new Error("Message not found");
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.message.findUnique({ where: { id: input.messageId } });
+    if (!existing) {
+      throw new Error("Message not found");
+    }
 
-  const events = Array.isArray(existing.statusEvents) ? (existing.statusEvents as Array<Record<string, unknown>>) : [];
-  const alreadyRecorded = events.some((event) => event.status === input.status && event.at === input.at);
-  if (!alreadyRecorded) {
-    events.push({ status: input.status, at: input.at, meta: input.meta ?? {} });
-  }
+    if (isDuplicateTransition(existing.status as MessageStatus, input.status)) {
+      return { campaignId: existing.campaignId, deduplicated: true };
+    }
 
-  const data: Record<string, unknown> = {
-    statusEvents: events,
-    status: input.status,
-    attempts: existing.attempts + 1
-  };
+    const events = Array.isArray(existing.statusEvents) ? (existing.statusEvents as Array<Record<string, unknown>>) : [];
+    const alreadyRecorded = events.some((event) => event.status === input.status && event.at === input.at);
+    if (!alreadyRecorded) {
+      events.push({
+        status: input.status,
+        at: input.at,
+        meta: {
+          ...(input.meta ?? {}),
+          ...(input.trackingId ? { trackingId: input.trackingId } : {})
+        }
+      });
+    }
 
-  if (input.status === "sent") {
-    data.sentAt = new Date(input.at);
-  }
-  if (input.status === "delivered") {
-    data.deliveredAt = new Date(input.at);
-  }
-  if (input.status === "opened") {
-    data.openedAt = new Date(input.at);
-  }
-  if (input.status === "clicked") {
-    data.clickedAt = new Date(input.at);
-  }
-  if (input.status === "failed") {
-    data.failedAt = new Date(input.at);
-    data.lastError = typeof input.meta?.reason === "string" ? input.meta.reason : "Delivery failed";
-  }
+    const data: Prisma.MessageUpdateInput = {
+      statusEvents: events as Prisma.InputJsonValue,
+      status: input.status,
+      attempts: existing.attempts + 1,
+      ...(input.trackingId && !existing.providerJobId ? { providerJobId: input.trackingId } : {})
+    };
 
-  await prisma.message.update({
-    where: { id: input.messageId },
-    data
+    if (input.status === "sent") {
+      data.sentAt = new Date(input.at);
+    }
+    if (input.status === "delivered") {
+      data.deliveredAt = new Date(input.at);
+    }
+    if (input.status === "opened" || input.status === "read") {
+      data.openedAt = new Date(input.at);
+      data.readAt = new Date(input.at);
+    }
+    if (input.status === "clicked") {
+      data.clickedAt = new Date(input.at);
+    }
+    if (input.status === "failed") {
+      data.failedAt = new Date(input.at);
+      data.lastError = typeof input.meta?.reason === "string" ? input.meta.reason : "Delivery failed";
+    }
+
+    await tx.message.update({
+      where: { id: input.messageId },
+      data
+    });
+
+    return { campaignId: existing.campaignId, deduplicated: false };
   });
 
-  await recalculateCampaignStats(existing.campaignId);
+  if (!result.deduplicated) {
+    await recalculateCampaignStats(result.campaignId);
+  }
 
-  return { ok: true };
+  return { ok: true, deduplicated: result.deduplicated };
 }
 
 export async function recalculateCampaignStats(campaignId: string) {
@@ -222,13 +266,13 @@ export async function recalculateCampaignStats(campaignId: string) {
   };
 
   for (const message of messages) {
-    if (message.status === "sent" || message.status === "delivered" || message.status === "opened" || message.status === "clicked") {
+    if (message.status === "sent" || message.status === "delivered" || message.status === "opened" || message.status === "read" || message.status === "clicked") {
       counts.sent += 1;
     }
-    if (message.status === "delivered" || message.status === "opened" || message.status === "clicked") {
+    if (message.status === "delivered" || message.status === "opened" || message.status === "read" || message.status === "clicked") {
       counts.delivered += 1;
     }
-    if (message.status === "opened" || message.status === "clicked") {
+    if (message.status === "opened" || message.status === "read" || message.status === "clicked") {
       counts.opened += 1;
     }
     if (message.status === "clicked") {
