@@ -32,7 +32,11 @@ export function DashboardCharts({ analytics }: { analytics: AnalyticsSummary }) 
                   <Cell key={entry[0]} fill={statusColors[index % statusColors.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ background: "#08101b", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <Tooltip
+                contentStyle={{ background: "#08101b", border: "1px solid rgba(34,211,238,0.28)", color: "#67e8f9" }}
+                itemStyle={{ color: "#67e8f9" }}
+                labelStyle={{ color: "#67e8f9" }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
