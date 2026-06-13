@@ -103,7 +103,7 @@ This repo includes `render.yaml`, so the fastest route is Render Blueprint:
    - `DATABASE_URL`
    - `OPENAI_API_KEY`
 4. After the services are created, confirm these backend env vars match the actual Render URLs:
-   - `API_BASE_URL=https://xeno-mini-crm-backend.onrender.com`
+   - `API_BASE_URL=https://xeno-mini-crm-backend-l8ff.onrender.com`
    - `CHANNEL_SERVICE_URL=https://xeno-mini-crm-channel.onrender.com`
 5. If Render changes either subdomain, update the env vars and redeploy the backend.
 
@@ -143,7 +143,7 @@ Import the same GitHub repo into Vercel as a monorepo project:
 Set this Vercel environment variable:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://xeno-mini-crm-backend.onrender.com
+NEXT_PUBLIC_API_BASE_URL=https://xeno-mini-crm-backend-l8ff.onrender.com
 ```
 
 Replace the URL if Render generated a different backend domain.
@@ -153,7 +153,7 @@ Replace the URL if Render generated a different backend domain.
 Open these URLs:
 
 ```bash
-https://xeno-mini-crm-backend.onrender.com/health
+https://xeno-mini-crm-backend-l8ff.onrender.com/health
 https://xeno-mini-crm-channel.onrender.com/health
 ```
 
@@ -208,8 +208,8 @@ Set the same backend env vars listed above. Run `npm run db:deploy` and `npm run
 
 ## Deployment URLs
 
-- Frontend: `https://your-vercel-app.vercel.app`
-- Backend: `https://xeno-mini-crm-backend.onrender.com`
+- Frontend: `https://xeno-crm-frontend-ochre.vercel.app`
+- Backend: `https://xeno-mini-crm-backend-l8ff.onrender.com`
 - Channel service: `https://xeno-mini-crm-channel.onrender.com`
 
-Replace these placeholders with your actual deployment URLs and update the environment variables accordingly.
+If any service is redeployed under a new domain, update the matching environment variables before demoing.
